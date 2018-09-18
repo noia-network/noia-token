@@ -25,6 +25,7 @@
     "chai-as-promised": "^7.1.1",
     "chai-bignumber": "^2.0.2",
     "mocha": "^5.1.1",
-    "truffle": "^4.1.12"
+    "truffle": "^4.1.12",
+    "web3-hdwallet-provider": "git://github.com/jaanek/web3-hdwallet-provider.git#master"
   }
 }
