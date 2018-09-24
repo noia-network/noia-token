@@ -32,10 +32,7 @@ module.exports = {
 
         // const providerUrl = 'http://eth.oja.me:3304/';
         const providerUrl = 'http://127.0.0.1:7545';
-        provider = new Web3HDWalletProvider(
-            new Web3.providers.HttpProvider(providerUrl),
-            mnemonic,
-          0, 3);
+        provider = new Web3HDWalletProvider(new Web3.providers.HttpProvider(providerUrl), mnemonic, 0, 3);
         provider.url = providerUrl;
         return provider;
       },
@@ -50,8 +47,8 @@ module.exports = {
         }
 
         // build the provider
-        // const providerUrl = 'http://eth.oja.me:3304/';
-        const providerUrl = 'https://d1xsa1mf7dtpee.cloudfront.net/dev';
+        const providerUrl = 'http://eth.oja.me:3304/';
+        // const providerUrl = 'https://d1xsa1mf7dtpee.cloudfront.net/dev';
         provider = new Web3HDWalletProvider(
           new Web3.providers.HttpProvider(providerUrl),
           mnemonic,
