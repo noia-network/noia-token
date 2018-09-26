@@ -1,8 +1,8 @@
 {
-  "name": "noia",
+  "name": "noia-token",
   "version": "1.0.0",
-  "description": "",
-  "main": "truffle-config.js",
+  "description": "Noia token smart contracts",
+  "main": "truffle.js",
   "directories": {
     "test": "test"
   },
