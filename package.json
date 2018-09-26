@@ -1,6 +1,6 @@
 {
   "name": "noia-token",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Noia token smart contracts",
   "main": "truffle.js",
   "directories": {
