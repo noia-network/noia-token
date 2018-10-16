@@ -58,6 +58,26 @@ module.exports = {
       },
       network_id: '3', // NOTE!! network_id '*' is not supported by the hdwallet
       gas: 6713094
+    },
+    rinkeby: {
+      provider: () => {
+        // if provider is already initialized (multiple calls to provider() can happen) then return it
+        if (provider) {
+          return provider;
+        }
+
+        // build the provider
+        //const providerUrl = 'http://eth.oja.me:3304/';
+        const providerUrl = 'https://rinkeby.infura.io/<paste_code_here>';
+        provider = new Web3HDWalletProvider(
+          new Web3.providers.HttpProvider(providerUrl),
+          mnemonic,
+          0, 3);
+        provider.url = providerUrl;
+        return provider;
+      },
+      network_id: '4',
+      gas: 6713094
     }
   }),
 

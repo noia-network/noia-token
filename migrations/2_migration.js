@@ -30,7 +30,7 @@ module.exports = function (deployer, network, accounts) {
 
   console.log('Deploying Whitelist ...');
   deployer.deploy(Whitelist).then(() => {
-    if (network === 'development' || network === 'ropsten') {
+    if (network === 'development' || network === 'ropsten' || network === 'rinkeby') {
       console.log(`Deploying EIP820 registry`);
       return EIP820Registry.deploy(web3latest, accounts[0]);
     } else {
