@@ -1,15 +1,17 @@
-const BigNumber = web3.BigNumber;
+const BN = web3.utils.BN;
 
 require('chai')
   .use(require('chai-as-promised'))
-  .use(require('chai-bignumber')(BigNumber))
+  .use(require('chai-bn')(BN))
   .should();
 
-const OneToken = new BigNumber(web3.toWei(1, 'ether'));
+const OneToken = new BN(web3.utils.toWei('1', 'ether'));
 
 const NOIAToken = artifacts.require('NOIAToken');
-const REVOKE_OPERATOR = 0;
-const AUTHORIZE_OPERATOR = 1;
+const RandomContract = artifacts.require('RandomContract');
+const TestTokenReceiver = artifacts.require("TestTokenReceiver");
+const CanonicalBurner = artifacts.require("CanonicalBurner");
+const TestERC20Token = artifacts.require("TestERC20Token");
 
 contract('NOIA Token', async accounts => {
   const admin = accounts[0];
@@ -17,160 +19,223 @@ contract('NOIA Token', async accounts => {
   const user2 = accounts[2];
   let token;
 
-  function signAuthorization(signer, operator, nonce, authorize) {
-    const leftpad = require('left-pad');
-
-    const hexData = [
-      token.address.slice(2),
-      operator.slice(2),
-      leftpad((nonce).toString(16), 64, 0),
-      leftpad((authorize).toString(16), 2, 0)
-    ].join('');
-
-    const msg = web3.sha3(hexData, {
-      encoding: 'hex'
-    });
-
-    return new Promise((resolve, reject) => {
-      web3.eth.sign(signer, msg, (error, result) => {
-        if (error) {
-          return reject(error);
-        }
-        console.log(`Sign result: ${result}`);
-        return resolve(result);
-      });
-    });
-  }
-
-  before(async () => {
+  beforeEach(async () => {
     token = await NOIAToken.new();
   });
 
-  it('token is created in Minting state', async () => {
-    (await token.state()).should.be.bignumber.equal(0);
+  describe('Default', () => {
+    it('receives token name', async () => {
+      (await token.name()).should.equal('NOIA Token');
+    });
+    it('receives token symbol', async () => {
+      (await token.symbol()).should.equal('NOIA');
+    });
+    it('receives decimals', async () => {
+      (await token.decimals()).should.bignumber.equal('18');
+    });
+    it('token is created with tokensToMint = 1000000000', async () => {
+      (await token.tokensToMint()).should.bignumber.equal(web3.utils.toWei('1000000000'));
+    });
+    it('should successfully set burn address', async () => {
+      await token.setBurnAddress(user2);
+
+      (await token.burnAddress()).should.equal(user2);
+    });
+    it('stranger should fail to set burn address', async () => {
+      await token.setBurnAddress(user2, { from : user1 }).should.be.rejected;
+    });
+    it('should fail to set burnAddress when it has non zero balance', async () => {
+      await token.mint(user2, OneToken);
+
+      await token.setBurnAddress(user2).should.be.rejected;
+    });
   });
 
-  it('should mint tokens', async () => {
-    await token.mint(admin, OneToken);
-    (await token.balanceOf(admin)).should.be.bignumber.equal(OneToken);
-  });
+  describe('Minting', () => {
+    it('allows owner to mint tokens', async () => {
+      await token.mint(user2, OneToken);
 
-  it('should fail to transfer while minting', async () => {
-    return token.transfer(user1, OneToken).should.be.rejected;
-  });
-
-  it('should fail to switch on burning before finished minting', async () => {
-    return token.enableBurn(true).should.be.rejected;
-  });
-
-  it('should successfully finish minting', async () => {
-    await token.finishMinting();
-
-    (await token.state()).should.be.bignumber.equal(1);
-  });
-
-  it('should fail to finish minting again', async () => {
-    return token.finishMinting().should.be.rejected;
-  });
-
-  it('should success transfer after minting finished', async () => {
-    await token.transfer(user1, OneToken);
-
-    (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken);
-  });
-
-  it('should fail to burn before burning is enabled', async () => {
-    return token.burn(OneToken.mul(0.5), ', ', { from: user1 }).should.be.rejected;
-  });
-
-  it('should success enable burning', async () => {
-    await token.enableBurn(true);
-
-    (await token.state()).should.be.bignumber.equal(2);
-  });
-
-  it('should successfully burn', async () => {
-    const totalSupply = await token.totalSupply();
-
-    await token.burn(OneToken.mul(0.5), '', '', { from: user1 });
-
-    (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken.mul(0.5));
-    (await token.totalSupply()).should.be.bignumber.equal(totalSupply.sub(OneToken.mul(0.5)));
-  });
-
-  it('should successfully disable burning', async () => {
-    await token.enableBurn(false);
-
-    (await token.state()).should.be.bignumber.equal(1);
-  });
-
-  it('should fail to burn after burning is disabled', async () => {
-    return token.burn(OneToken.mul(0.5), ', ', { from: user1 }).should.be.rejected;
-  });
-
-  it('should be possible to authorize operator with signature', async () => {
-    const signer = user1;
-    const operator = user2;
-    const nonce = 0;
-    const signature = await signAuthorization(signer, operator, nonce, AUTHORIZE_OPERATOR);
-
-    (await token.isOperatorFor(operator, signer)).should.be.false;
-
-    await token.authorizeOperatorWithSignature(operator, nonce, signature, {
-      from: user2
+      (await token.balanceOf(user2)).should.be.bignumber.equal(OneToken);
     });
 
-    (await token.isOperatorFor(operator, signer)).should.be.true;
-  });
+    it('should transfer while minting is enabled', async () => {
+      await token.mint(user1, OneToken);
 
-  it('should be possible to revoke operator with signature', async () => {
-    const signer = user1;
-    const operator = user2;
-    const nonce = 1;
-    const signature = await signAuthorization(signer, operator, nonce, REVOKE_OPERATOR);
+      await token.transfer(user2, OneToken, {
+        from: user1
+      });
 
-    (await token.isOperatorFor(operator, signer)).should.be.true;
-
-    await token.revokeOperatorWithSignature(operator, nonce, signature, {
-      from: user2
+      (await token.balanceOf(user2)).should.be.bignumber.equal(OneToken);
     });
 
-    (await token.isOperatorFor(operator, signer)).should.be.false;
-  });
-
-  it('should not be possible to authorize operator with revoke signature', async () => {
-    const signer = user1;
-    const operator = user2;
-    const nonce = 2;
-    const signature = await signAuthorization(signer, operator, nonce, REVOKE_OPERATOR);
-
-    return token.authorizeOperatorWithSignature(operator, nonce, signature, {from: user2}).should.be.rejected;
-  });
-
-  it('should not be possible to revoke operator with authorize signature', async () => {
-    const signer = user1;
-    const operator = user2;
-    const nonce = 2;
-    // authorize operator first
-    const signature = await signAuthorization(signer, operator, nonce, AUTHORIZE_OPERATOR);
-
-    await token.authorizeOperatorWithSignature(operator, nonce, signature, {
-      from: user2
+    it('stranger cannot mint tokens', async () => {
+      await token.mint(user2, OneToken, {
+        from: user2
+      }).should.be.rejected;
     });
-    (await token.isOperatorFor(operator, signer)).should.be.true;
 
-    const revokeNonce = nonce + 1;
+    it('cannot mint to address(0)', async () => {
+      await token.mint('0x0', OneToken).should.be.rejected;
+    });
 
-    const sig = await signAuthorization(signer, operator, revokeNonce, AUTHORIZE_OPERATOR);
-    return token.revokeOperatorWithSignature(operator, revokeNonce, sig, { from: user2 }).should.be.rejected;
+    it('allows minting only 1 000 000 000 tokens', async () => {
+      await token.mint(user2, OneToken.mul(new BN('1000000000')));
+
+      await token.mint(user2, '1').should.be.rejected;
+    });
+
+    it('allows minting not more than 1 000 000 000 tokens', async () => {
+      await token.mint(user2, OneToken.mul(new BN('1000000000')).add(new BN('1'))).should.be.rejected;
+    });
+
+    it('mints and burns when minting tokens to burn address', async () => {      
+      await token.mint(user1, OneToken.mul(new BN('999999999')));
+      await token.setBurnAddress(user2);
+
+      await token.mint(user2, OneToken);
+
+      (await token.balanceOf(user2)).should.bignumber.equal('0');
+    });
+
+    it('mints and notifies smart contract', async () => {
+      const receiver = await TestTokenReceiver.new(token.address);
+
+      await token.mint(receiver.address, OneToken);
+
+      (await token.balanceOf(receiver.address)).should.bignumber.equal(OneToken);
+      (await receiver.from()).should.equal('0x0000000000000000000000000000000000000000');
+      (await receiver.to()).should.equal(receiver.address);
+      (await receiver.amount()).should.bignumber.equal(OneToken);
+    });
+
+    it('mints and burns when minting to burner contract', async () => {
+      const receiver = await CanonicalBurner.new(token.address);
+      await token.mint(user1, OneToken.mul(new BN('999999999')));
+      await token.setBurnAddress(receiver.address);
+
+      await token.mint(receiver.address, OneToken);
+
+      (await token.balanceOf(receiver.address)).should.bignumber.equal('0');
+    });
   });
 
-  it('should not be possible to authorize operator with wrong nonce', async () => {
-    const signer = user1;
-    const operator = user2;
-    const nonce = 999;
-    const sig = await signAuthorization(signer, operator, nonce, AUTHORIZE_OPERATOR);
-    return token.authorizeOperatorWithSignature(operator, nonce, sig, { from: user2 }).should.be.rejected;
+  describe('Sending', () => {
+    let random;
+    let receiver;
+    beforeEach(async () => {
+      await token.mint(admin, OneToken.mul(new BN(10)));
+      random = await RandomContract.new();
+      receiver = await TestTokenReceiver.new(token.address);
+    });
+
+    it('should success ERC20 transfer', async () => {
+      await token.transfer(user1, OneToken);
+
+      (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken);
+    });
+
+    it('should successfully transfer and notify token receiver smart contract', async () => {
+      await token.transfer(receiver.address, OneToken);
+
+      (await token.balanceOf(receiver.address)).should.be.bignumber.equal(OneToken);
+      (await receiver.from()).should.equal(admin);
+      (await receiver.to()).should.equal(receiver.address);
+      (await receiver.amount()).should.bignumber.equal(OneToken);
+    });
+
+    it('should successfully transfer into unregistered smart contract ', async () => {
+      await receiver.unregister();
+
+      await token.transfer(receiver.address, OneToken);
+
+      (await token.balanceOf(receiver.address)).should.be.bignumber.equal(OneToken);
+      (await receiver.from()).should.equal('0x0000000000000000000000000000000000000000');
+      (await receiver.to()).should.equal('0x0000000000000000000000000000000000000000');
+      (await receiver.amount()).should.bignumber.equal(new BN('0'));
+    });
   });
 
+  describe('Burning', () => {
+    let burner;
+    let receiver;
+    beforeEach(async () => {
+      await token.mint(admin, OneToken.mul(new BN(10)));
+      burner = await CanonicalBurner.new(token.address);
+      receiver = await TestTokenReceiver.new(token.address);
+    });
+
+    it('should not allow burning before all tokens are minted', async () => {
+      await token.setBurnAddress(user1);
+
+      await token.transfer(user1, OneToken).should.be.rejected;
+    });
+
+    it('should burn tokens when transfering to burnAddress', async () => {
+      const tokensLeft = await token.tokensToMint();
+      await token.mint(admin, tokensLeft);
+      const balance = await token.balanceOf(admin);
+      await token.setBurnAddress(user1);
+
+      await token.transfer(user1, OneToken);
+
+      (await token.balanceOf(user1)).should.bignumber.equal(new BN(0));
+      (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
+    });
+
+    it('should burn tokens using burning contract', async () => {
+      const tokensLeft = await token.tokensToMint();
+      await token.mint(admin, tokensLeft);
+      const balance = await token.balanceOf(admin);
+      await token.setBurnAddress(burner.address);
+
+      await token.transfer(burner.address, OneToken);
+
+      (await token.balanceOf(burner.address)).should.bignumber.equal(new BN(0));
+      (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
+    });
+
+    it('unregistered burner should have balance', async () => {
+      const tokensLeft = await token.tokensToMint();
+      await token.mint(admin, tokensLeft);
+      await receiver.unregister();
+      await token.setBurnAddress(receiver.address);
+
+      await token.transfer(receiver.address, OneToken);
+
+      (await token.balanceOf(receiver.address)).should.bignumber.equal(OneToken);
+    });
+
+    it('stranger cannot burn tokens', async () => {
+      await token.mint(user2, OneToken);
+      await token.setBurnAddress(user1);
+
+      await token.burn(OneToken, { from: user2 }).should.be.rejected;
+    });
+  });
+
+  describe('Token Recovery', () => {
+    let erc20Token;
+
+    beforeEach(async () => {
+      erc20Token = await TestERC20Token.new();
+
+      await erc20Token.mint(user1, OneToken);
+      await erc20Token.transfer(token.address, OneToken, {
+        from: user1
+      });
+    });
+
+    it('owner can recover other tokens', async () => {
+      await token.recoverTokens(erc20Token.address, user1, OneToken);
+
+      (await erc20Token.balanceOf(token.address)).should.be.bignumber.equal('0');
+      (await erc20Token.balanceOf(user1)).should.be.bignumber.equal(OneToken);
+    });
+
+    it('stranger cannot recover other tokens', async () => {
+      await token.recoverTokens(erc20Token.address, user1, OneToken, {
+        from: user1
+      }).should.be.rejected;
+    });
+  });
 });

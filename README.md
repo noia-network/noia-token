@@ -1,30 +1,37 @@
-# NOIA Crowdsale and Token contracts
+# NOIA ERC-20 Token Smart Contract
 
 ## Testing
 
-Before running test suite you need to start `ganache-cli` with the following command
-
-`ganache-cli -a 200 -e 1000000`
-
-After that start test suite with `truffle test` in a separate terminal session.
+Run tests with `npm test` command
 
 ## Deployment
 
-1. Before deployment you have to change addresses in NOIACrowdsale.sol for:
-    - WALLET (line 16)
-    - TEAM_WALLET (line 18)
-    - ADVISORS_WALLET (line 20)
-    - COMMUNITY_WALLET (line 22)
-    - FUTURE_WALLET (line 24)
-2. Change the following constants in NOIACrowdsale.sol to correct values:
-    - PRE_SALE_TOKENS (line 27)
-    - START_TIME (line 28)
-    - END_TIME (line 29)
-    - maxPurchaseUsd (line 57) (you can change it later using `setMaxPurchaseUsd()` function)
-3. Recheck token name and symbol in NOIAToken.sol (lines 21, 22).
-4. First you have to deploy Whitelist.
-5. Then you have to deploy NOIAToken.
-6. Then, you have to deploy NOIACrowdsale and give deployed token and whitelist smart-contracts addresses into it.
-7. Then you have to execute `transferOwnership` function on NOIAToken with address of NOIACrowdsale smart-contract.
+1. Recheck token name and symbol in NOIAToken.sol (lines 14, 15).
+2. Deploy token smart contract using `truffle migrate` or manually by using some other tool (for example https://myetherwallet.com)
 
-P.S. You can also deploy it using `truffle migrate`.
+## Token functionality
+
+* NOIA Token is ERC20 token 
+
+* Token decimal count is *18*
+
+* Tokens can be minted using `mint()` function.
+
+* Tokens cannot be minted to zero address (0x0)
+
+* Tokens can be minted only by token contract owner.
+
+* Maximum token amount is limited to *1 000 000 000* tokens
+
+* Token supports smart-contract notification when tokens are transfered to smart-contract address. Subscription to notifications is performed by calling `register()` function on token contract. To unsubscribe from notifications smart-contract must call `unregister()` function on token contract. Smart-contract must implement `ITokenReceiver` interface to receive notifications.
+
+* Token burning is enabled only after all *1 000 000 000* tokens are minted
+
+* Token burning can only be performed by `burnAddress` account which can be set using `setBurnAddress()` function
+
+* `setBurnAddress()` can be called only by token contract owner
+
+* Token supports token recovery if somebody, accidentially, transfers tokens to the token contract address. Owner can call `recoverTokens(ERC20Basic token, address to, uint256 amount)` function where:
+  * `token` - token contract address
+  * `to` - the address where tokens will be transfer
+  * `amount` - amount of tokens to recover
