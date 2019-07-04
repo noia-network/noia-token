@@ -5,6 +5,8 @@ require('chai')
   .use(require('chai-bn')(BN))
   .should();
 
+const { sign, hashAndSign } = require('./utils.js');
+
 const OneToken = new BN(web3.utils.toWei('1', 'ether'));
 
 const NOIAToken = artifacts.require('NOIAToken');
@@ -119,8 +121,7 @@ contract('NOIA Token', async accounts => {
     });
   });
 
-  describe('Sending', () => {
-    let random;
+  describe('Transfer', () => {
     let receiver;
     beforeEach(async () => {
       await token.mint(admin, OneToken.mul(new BN(10)));
@@ -154,14 +155,97 @@ contract('NOIA Token', async accounts => {
       (await receiver.amount()).should.bignumber.equal(new BN('0'));
     });
   });
+  
+  describe('Etherless Transfer', () => {
+    let receiver;
+    let methodSignature;
+    beforeEach(async () => {
+      await token.mint(admin, OneToken.mul(new BN(10)));
+      random = await RandomContract.new();
+      receiver = await TestTokenReceiver.new(token.address);
+      methodSignature = web3.eth.abi.encodeFunctionSignature("transferPreSigned(bytes,address,uint256,uint256,uint256)");
+    });
+
+    it('should success ERC20 transfer', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+
+      await token.transferPreSigned(signature, user1, OneToken, OneToken, 1);
+
+      (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken);
+    });
+
+    it('should success ERC20 transfer from receiver', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+
+      await token.transferPreSigned(signature, user1, OneToken, OneToken, 1, { from: user1 });
+
+      (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken.mul(new BN('2')));
+    });
+
+    it('should successfully transfer and notify token receiver smart contract', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, receiver.address, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+
+      await token.transferPreSigned(signature, receiver.address, OneToken, OneToken, 1);
+
+      (await token.balanceOf(receiver.address)).should.be.bignumber.equal(OneToken);
+      (await receiver.from()).should.equal(admin);
+      (await receiver.to()).should.equal(receiver.address);
+      (await receiver.amount()).should.bignumber.equal(OneToken);
+    });
+
+    it('should successfully forward transfer and notify token receiver smart contract', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+
+      await receiver.forwardTransferPreSigned(signature, user1, OneToken, OneToken, 1);
+
+      (await token.balanceOf(user1)).should.be.bignumber.equal(OneToken);
+      (await token.balanceOf(receiver.address)).should.be.bignumber.equal(OneToken);
+      (await receiver.from()).should.equal(admin);
+      (await receiver.to()).should.equal(receiver.address);
+      (await receiver.amount()).should.bignumber.equal(OneToken);
+    });
+
+    it('should successfully forward transfer and notify token receiver smart contract', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, receiver.address, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+
+      await receiver.forwardTransferPreSigned(signature, receiver.address, OneToken, OneToken, 1);
+
+      (await token.balanceOf(receiver.address)).should.be.bignumber.equal(OneToken.mul(new BN('2')));
+      (await receiver.from()).should.equal(admin);
+      (await receiver.to()).should.equal(receiver.address);
+      (await receiver.amount()).should.bignumber.equal(OneToken.mul(new BN('2')));
+    });
+
+    it('should successfully transfer into unregistered smart contract ', async () => {
+      const msg = await token.hashForSign(methodSignature, token.address, receiver.address, OneToken, OneToken, 1);
+      const signature = await sign(msg, admin);
+      await receiver.unregister();
+
+      await token.transferPreSigned(signature, receiver.address, OneToken, OneToken, 1);
+
+      (await token.balanceOf(receiver.address)).should.be.bignumber.equal(OneToken);
+      (await receiver.from()).should.equal('0x0000000000000000000000000000000000000000');
+      (await receiver.to()).should.equal('0x0000000000000000000000000000000000000000');
+      (await receiver.amount()).should.bignumber.equal(new BN('0'));
+    });
+
+
+  });
 
   describe('Burning', () => {
     let burner;
     let receiver;
+    let methodSignature;
     beforeEach(async () => {
       await token.mint(admin, OneToken.mul(new BN(10)));
       burner = await CanonicalBurner.new(token.address);
       receiver = await TestTokenReceiver.new(token.address);
+      methodSignature = web3.eth.abi.encodeFunctionSignature("transferPreSigned(bytes,address,uint256,uint256,uint256)");
     });
 
     it('should not allow burning before all tokens are minted', async () => {
@@ -170,46 +254,69 @@ contract('NOIA Token', async accounts => {
       await token.transfer(user1, OneToken).should.be.rejected;
     });
 
-    it('should burn tokens when transfering to burnAddress', async () => {
-      const tokensLeft = await token.tokensToMint();
-      await token.mint(admin, tokensLeft);
-      const balance = await token.balanceOf(admin);
-      await token.setBurnAddress(user1);
+    describe('when all tokens minted', () => {
+      beforeEach(async () => {
+        const tokensLeft = await token.tokensToMint();
+        await token.mint(admin, tokensLeft);
+      });
 
-      await token.transfer(user1, OneToken);
+      it('should burn tokens when transfering to burnAddress', async () => {
+        const balance = await token.balanceOf(admin);
+        await token.setBurnAddress(user1);
+  
+        await token.transfer(user1, OneToken);
+  
+        (await token.balanceOf(user1)).should.bignumber.equal(new BN(0));
+        (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
+      });
+  
+      it('should burn tokens using burning contract', async () => {
+        const balance = await token.balanceOf(admin);
+        await token.setBurnAddress(burner.address);
+  
+        await token.transfer(burner.address, OneToken);
+  
+        (await token.balanceOf(burner.address)).should.bignumber.equal(new BN(0));
+        (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
+      });
+  
+      it('unregistered burner should have balance', async () => {
+        await receiver.unregister();
+        await token.setBurnAddress(receiver.address);
+  
+        await token.transfer(receiver.address, OneToken);
+  
+        (await token.balanceOf(receiver.address)).should.bignumber.equal(OneToken);
+      });
 
-      (await token.balanceOf(user1)).should.bignumber.equal(new BN(0));
-      (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
-    });
+      it('should burn tokens when etherless transfer to burn address', async () => {
+        const msg = await token.hashForSign(methodSignature, token.address, user1, OneToken, OneToken, 1);
+        const signature = await sign(msg, admin);
+        await token.setBurnAddress(user1);
+  
+        await token.transferPreSigned(signature, user1, OneToken, OneToken, 1);    
+  
+        (await token.balanceOf(user1)).should.be.bignumber.equal('0');
+      });
 
-    it('should burn tokens using burning contract', async () => {
-      const tokensLeft = await token.tokensToMint();
-      await token.mint(admin, tokensLeft);
-      const balance = await token.balanceOf(admin);
-      await token.setBurnAddress(burner.address);
-
-      await token.transfer(burner.address, OneToken);
-
-      (await token.balanceOf(burner.address)).should.bignumber.equal(new BN(0));
-      (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
-    });
-
-    it('unregistered burner should have balance', async () => {
-      const tokensLeft = await token.tokensToMint();
-      await token.mint(admin, tokensLeft);
-      await receiver.unregister();
-      await token.setBurnAddress(receiver.address);
-
-      await token.transfer(receiver.address, OneToken);
-
-      (await token.balanceOf(receiver.address)).should.bignumber.equal(OneToken);
-    });
-
-    it('stranger cannot burn tokens', async () => {
-      await token.mint(user2, OneToken);
-      await token.setBurnAddress(user1);
-
-      await token.burn(OneToken, { from: user2 }).should.be.rejected;
+      it('should etherless burn tokens using burning contract', async () => {
+        const msg = await token.hashForSign(methodSignature, token.address, burner.address, OneToken, OneToken, 1);
+        const signature = await sign(msg, admin);
+        const balance = await token.balanceOf(admin);
+        await token.setBurnAddress(burner.address);
+  
+        await token.transferPreSigned(signature, burner.address, OneToken, OneToken, 1);    
+  
+        (await token.balanceOf(burner.address)).should.bignumber.equal('0');
+        (await token.balanceOf(admin)).should.bignumber.equal(new BN(balance).sub(OneToken));
+      });
+  
+      it('stranger cannot burn tokens', async () => {
+        await token.transfer(user2, OneToken);
+        await token.setBurnAddress(user1);
+  
+        await token.burn(OneToken, { from: user2 }).should.be.rejected;
+      });
     });
   });
 
