@@ -1,5 +1,4 @@
 const leftpad = require('left-pad');
-const util = require('ethjs-util');
 
 function formattedInt(value) {
     return leftpad((value).toString(16), 64, 0);
@@ -39,5 +38,44 @@ function fixSignature (signature) {
     return signature.slice(0, 130) + vHex;
 }
 
+async function getTime() {
+    return (await web3.eth.getBlock('latest')).timestamp;
+}
+
+function increaseTime(time) {
+    return new Promise((resolve, reject) => {
+        web3.currentProvider.send({
+            jsonrpc: "2.0",
+            method: "evm_increaseTime",
+            params: [time], // 86400 is num seconds in day
+            id: new Date().getTime()
+        }, (err, result) => {
+            if (err) {
+                return reject(err)
+            }
+            return resolve(result)
+        });
+    })
+}
+
+function nextBlock() {
+    return new Promise((resolve, reject) => {
+        web3.currentProvider.send({
+            jsonrpc: "2.0",
+            method: "evm_mine",
+            params: [], // 86400 is num seconds in day
+            id: new Date().getTime()
+        }, (err, result) => {
+            if (err) {
+                return reject(err)
+            }
+            return resolve(result)
+        });
+    })
+}
+
 module.exports.sign = sign;
 module.exports.hashAndSign = hashAndSign;
+module.exports.increaseTime = increaseTime;
+module.exports.getTime = getTime;
+module.exports.nextBlock = nextBlock;

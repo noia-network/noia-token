@@ -233,8 +233,6 @@ contract('NOIA Token', async accounts => {
       (await receiver.to()).should.equal('0x0000000000000000000000000000000000000000');
       (await receiver.amount()).should.bignumber.equal(new BN('0'));
     });
-
-
   });
 
   describe('Burning', () => {
