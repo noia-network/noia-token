@@ -30,9 +30,18 @@ contract NOIAVaultFactory {
         emit NOIAVaultCreated(_beneficiary, _lockTill, clone);
     }
 
-    function unlockableBalanceOf(address beneficiary) public view returns (uint256) {
+    function release(address _beneficiary) public returns (uint256) {
+        uint256 released = 0;
+        address[] memory addrs = vaults[_beneficiary];
+        for (uint256 i = 0; i < addrs.length; i++) {
+            released = released.add(NOIAVault(addrs[i]).release());
+        }
+        return released;
+    }
+
+    function unlockableBalanceOf(address _beneficiary) public view returns (uint256) {
         uint256 total = 0;
-        address[] memory addrs = vaults[beneficiary];
+        address[] memory addrs = vaults[_beneficiary];
         for (uint256 i = 0; i < addrs.length; i++) {
             NOIAVault vault = NOIAVault(addrs[i]);
             if (vault.lockTill() < now) {
@@ -42,9 +51,9 @@ contract NOIAVaultFactory {
         return total;
     }
 
-    function totalBalanceOf(address beneficiary) public view returns (uint256) {
+    function totalBalanceOf(address _beneficiary) public view returns (uint256) {
         uint256 total = 0;
-        address[] memory addrs = vaults[beneficiary];
+        address[] memory addrs = vaults[_beneficiary];
         for (uint256 i = 0; i < addrs.length; i++) {
             total = total.add(IERC20(NOIA_TOKEN_ADDRESS).balanceOf(addrs[i]));
         }

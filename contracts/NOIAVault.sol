@@ -24,12 +24,15 @@ contract NOIAVault is ITokenReceiver {
         NOIAToken(NOIA_TOKEN_ADDRESS).register();
     }
 
-    function release() public {
-        if (lockTill > now) return;
+    function release() public returns (uint256) {
+        if (lockTill > now) return 0;
 
         NOIAToken token = NOIAToken(NOIA_TOKEN_ADDRESS);
         uint256 balance = token.balanceOf(address(this));
-        token.transfer(beneficiary, balance);
+        if (balance > 0) {
+            token.transfer(beneficiary, balance);
+        }
+        return balance;
     }
 
     function tokensReceived(
