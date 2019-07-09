@@ -2,14 +2,23 @@ pragma solidity 0.5.10;
 
 import "./NOIAToken.sol";
 import "./ITokenReceiver.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 
 
 contract NOIAVault is ITokenReceiver {
+    using SafeERC20 for IERC20;
+
     //address public constant NOIA_TOKEN_ADDRESS = 0xfc858154C0b2c4A3323046Fb505811F110EBdA57; // uncomment before deployment
     address public NOIA_TOKEN_ADDRESS; // remove before deployment
 
     address public beneficiary;
     uint256 public lockTill;
+
+    modifier onlyOwner() {
+        require(msg.sender == NOIAToken(NOIA_TOKEN_ADDRESS).owner(), "Caller is not NOIA Token owner");
+        _;
+    }
 
     //function initialize(address _beneficiary, uint256 _lockTill) public { // uncomment before deployment
     function initialize(address _beneficiary, uint256 _lockTill, address noiaTokenAddress) public { // remove before deployment
@@ -24,15 +33,19 @@ contract NOIAVault is ITokenReceiver {
         NOIAToken(NOIA_TOKEN_ADDRESS).register();
     }
 
-    function release() public returns (uint256) {
-        if (lockTill > now) return 0;
+    function release() public {
+        if (lockTill > now) return;
 
         NOIAToken token = NOIAToken(NOIA_TOKEN_ADDRESS);
         uint256 balance = token.balanceOf(address(this));
-        if (balance > 0) {
-            token.transfer(beneficiary, balance);
-        }
-        return balance;
+        token.transfer(beneficiary, balance);
+    }
+
+    function recoverTokens(IERC20 token, address to, uint256 amount) public onlyOwner {
+        require(address(token) != NOIA_TOKEN_ADDRESS, "Cannot recover NOIA Token");
+        uint256 balance = token.balanceOf(address(this));
+        require(balance >= amount, "Given amount is larger than current balance");
+        token.safeTransfer(to, amount);
     }
 
     function tokensReceived(

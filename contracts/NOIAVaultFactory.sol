@@ -2,10 +2,11 @@ pragma solidity 0.5.10;
 
 import "./NOIAVault.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
-
-
+import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 contract NOIAVaultFactory {
+    using SafeERC20 for IERC20;
     using SafeMath for uint256;
     //address public constant NOIA_TOKEN_ADDRESS = 0xfc858154C0b2c4A3323046Fb505811F110EBdA57; // uncomment before deployment
     //address public constant NOIA_VAULT_ADDRESS = 0xfc858154C0b2c4A3323046Fb505811F110EBdA57; // uncomment and fix before deployment
@@ -14,7 +15,12 @@ contract NOIAVaultFactory {
 
     mapping(address => address[]) public vaults;
 
-    event NOIAVaultCreated(address indexed beneficiary, uint256 lockTill, address vaultAddress);
+    event VaultCreated(address indexed beneficiary, uint256 lockTill, address vaultAddress);
+
+    modifier onlyOwner() {
+        require(msg.sender == Ownable(NOIA_TOKEN_ADDRESS).owner(), "Caller is not NOIA Token owner");
+        _;
+    }
 
     constructor(address _noiaVaultAddress, address _noiaTokenAddress) public { // remove before deployment
         NOIA_VAULT_ADDRESS = _noiaVaultAddress;
@@ -27,16 +33,7 @@ contract NOIAVaultFactory {
         NOIAVault(clone).initialize(_beneficiary, _lockTill, NOIA_TOKEN_ADDRESS); // remove before deployment
         vaults[_beneficiary].push(clone);
 
-        emit NOIAVaultCreated(_beneficiary, _lockTill, clone);
-    }
-
-    function release(address _beneficiary) public returns (uint256) {
-        uint256 released = 0;
-        address[] memory addrs = vaults[_beneficiary];
-        for (uint256 i = 0; i < addrs.length; i++) {
-            released = released.add(NOIAVault(addrs[i]).release());
-        }
-        return released;
+        emit VaultCreated(_beneficiary, _lockTill, clone);
     }
 
     function unlockableBalanceOf(address _beneficiary) public view returns (uint256) {
@@ -58,6 +55,16 @@ contract NOIAVaultFactory {
             total = total.add(IERC20(NOIA_TOKEN_ADDRESS).balanceOf(addrs[i]));
         }
         return total;
+    }
+
+    function getVaultsCount(address beneficiary) public view returns (uint256) {
+        return vaults[beneficiary].length;
+    }
+
+    function recoverTokens(IERC20 token, address to, uint256 amount) public onlyOwner {
+        uint256 balance = token.balanceOf(address(this));
+        require(balance >= amount, "Given amount is larger than current balance");
+        token.safeTransfer(to, amount);
     }
 
     /* ERC-1167 minimal proxy contract */

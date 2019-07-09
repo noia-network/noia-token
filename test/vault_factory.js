@@ -58,7 +58,7 @@ contract('NOIA Vault Factory', async accounts => {
     });
   });
 
-  describe('release', async () => {
+  describe('release()', async () => {
     let vault;
     beforeEach(async () => {
       await token.mint(admin, OneToken.mul(new BN('10')));
@@ -147,28 +147,5 @@ contract('NOIA Vault Factory', async accounts => {
 
       (await factory.unlockableBalanceOf(user1)).should.bignumber.equal(OneToken.mul(new BN('2')));
     });
-
-    it('should partially release locked tokens', async () => {
-      const vault2 = await createVault(user1, now + 200);
-      await token.transfer(vault.address, OneToken);
-      await token.transfer(vault2.address, OneToken);
-      await increaseTime(101);
-
-      await factory.release(user1);
-      
-      (await token.balanceOf(user1)).should.bignumber.equal(OneToken);
-    });
-
-    it('should release all locked tokens', async () => {
-      const vault2 = await createVault(user1, now + 200);
-      await token.transfer(vault.address, OneToken);
-      await token.transfer(vault2.address, OneToken);
-      await increaseTime(201);
-
-      await factory.release(user1);
-      
-      (await token.balanceOf(user1)).should.bignumber.equal(OneToken.mul(new BN('2')));
-    });
   });
-
 });
